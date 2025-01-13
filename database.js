@@ -31,18 +31,36 @@ const getUserLocationsFromDb = async (userId) => {
     }
 };
 
+const getMaxDisplayOrderForUserFromDb = async (userId) => {
+    const connection = await createConnection('read');
+    try {
+        const [rows] = await connection.execute(
+            'SELECT COALESCE(MAX(display_order), -1) AS max_order FROM user_locations WHERE user_id = ?', 
+            [userId]
+        );
+        return rows[0].max_order;
+    } finally {
+        await connection.end();
+    }
+};
+
 const addLocationToDb = async (userId, locationData) => {
     const connection = await createConnection('write');
     try {
+        // If no display order is provided, get the next order
+        const displayOrder = locationData.display_order !== undefined 
+            ? locationData.display_order 
+            : await getMaxDisplayOrderForUserFromDb(userId) + 1;
+
         const [result] = await connection.execute(
             queries.addLocation,
             [
                 userId,
-                locationData.cityName,
-                locationData.countryCode,
+                locationData.city_name || locationData.cityName,
+                locationData.country_code || locationData.countryCode,
                 locationData.latitude,
                 locationData.longitude,
-                locationData.displayOrder || 0
+                displayOrder
             ]
         );
         return result.insertId;
@@ -54,7 +72,29 @@ const addLocationToDb = async (userId, locationData) => {
 const removeLocationFromDb = async (userId, locationId) => {
     const connection = await createConnection('write');
     try {
+        await connection.beginTransaction();
+
+        // Remove the specified location
         await connection.execute(queries.removeLocation, [userId, locationId]);
+
+        // Fetch remaining locations to re-order
+        const [remainingLocations] = await connection.execute(
+            'SELECT location_id FROM user_locations WHERE user_id = ? ORDER BY display_order ASC', 
+            [userId]
+        );
+
+        // Re-assign display orders
+        for (let i = 0; i < remainingLocations.length; i++) {
+            await connection.execute(
+                'UPDATE user_locations SET display_order = ? WHERE location_id = ?', 
+                [i, remainingLocations[i].location_id]
+            );
+        }
+
+        await connection.commit();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
     } finally {
         await connection.end();
     }
@@ -64,14 +104,14 @@ const updateLocationOrderInDb = async (userId, locationOrder) => {
     const connection = await createConnection('write');
     try {
         await connection.beginTransaction();
-        
-        for (const order of locationOrder) {
+
+        for (let i = 0; i < locationOrder.length; i++) {
             await connection.execute(
-                queries.updateLocationOrder,
-                [order.displayOrder, userId, order.locationId]
+                queries.updateLocationOrder, 
+                [i, userId, locationOrder[i]]
             );
         }
-        
+
         await connection.commit();
     } catch (error) {
         await connection.rollback();
@@ -86,5 +126,6 @@ module.exports = {
     getUserLocationsFromDb,
     addLocationToDb,
     removeLocationFromDb,
-    updateLocationOrderInDb
+    updateLocationOrderInDb,
+    getMaxDisplayOrderForUserFromDb
 };
