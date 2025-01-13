@@ -69,19 +69,32 @@ const verifyToken = (authHeader) => {
 };
 
 exports.handler = async (event) => {
+    // Enhanced CORS-aware response creation
+    const createResponse = (statusCode, body) => ({
+        statusCode,
+        headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': process.env.REACT_APP_ALLOWED_ORIGIN || '*',
+            'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT,DELETE',
+            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+            'Access-Control-Allow-Credentials': 'true'
+        },
+        body: JSON.stringify(body)
+    });
+
     console.log('Full Event Details:', JSON.stringify({
         method: event.httpMethod,
         path: event.path,
         headers: {
             ...event.headers,
-            Authorization: event.headers.Authorization 
-                ? event.headers.Authorization.substring(0, 20) + '...' 
+            Authorization: event.headers.Authorization
+                ? event.headers.Authorization.substring(0, 20) + '...'
                 : undefined
         },
         body: event.body
     }, null, 2));
 
-    // Handle OPTIONS requests for CORS
+    // Handle OPTIONS requests for CORS explicitly
     if (event.httpMethod === 'OPTIONS') {
         return createResponse(204, {});
     }
@@ -96,7 +109,7 @@ exports.handler = async (event) => {
 
         const { path, httpMethod, body } = event;
         const requestBody = body ? JSON.parse(body) : {};
-
+        
         console.log('Processing Request:', {
             method: httpMethod,
             path: path,
@@ -109,20 +122,20 @@ exports.handler = async (event) => {
             case 'GET /locations':
                 const locations = await getUserLocations(user.userId);
                 return createResponse(200, locations);
-
+            
             case 'POST /locations':
                 const newLocation = await addLocation(user.userId, requestBody);
                 return createResponse(201, newLocation);
-
+            
             case 'DELETE /locations/{id}':
                 const locationId = event.pathParameters.id;
                 await removeLocation(user.userId, locationId);
                 return createResponse(200, { message: 'Location deleted successfully' });
-
+            
             case 'PUT /locations/order':
                 await updateLocationOrder(user.userId, requestBody.locationOrder);
                 return createResponse(200, { message: 'Location order updated successfully' });
-
+            
             default:
                 console.log('No matching route found for:', `${httpMethod} ${path}`);
                 return createResponse(404, { message: 'Not Found' });
@@ -135,11 +148,11 @@ exports.handler = async (event) => {
         });
 
         // Detailed error responses
-        if (error.message === 'No token provided' || 
-            error.message === 'Invalid token format' || 
+        if (error.message === 'No token provided' ||
+            error.message === 'Invalid token format' ||
             error.name === 'JsonWebTokenError') {
             return createResponse(401, { 
-                message: 'Unauthorized: Invalid Token', 
+                message: 'Unauthorized: Invalid Token',
                 details: error.message 
             });
         }
@@ -151,7 +164,7 @@ exports.handler = async (event) => {
         }
 
         return createResponse(500, { 
-            message: 'Internal Server Error', 
+            message: 'Internal Server Error',
             details: error.message 
         });
     }
