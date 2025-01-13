@@ -1,6 +1,7 @@
-if (process.env.NODE_ENV !== 'production') {
-    require('dotenv').config();
-}
+// Only use dotenv in development
+if (process.env.NODE_ENV === "development") {
+    require("dotenv").config();
+  }
 
 const jwt = require('jsonwebtoken');
 const {
