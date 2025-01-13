@@ -69,33 +69,39 @@ const verifyToken = (authHeader) => {
 };
 
 exports.handler = async (event) => {
-    // Enhanced CORS-aware response creation
-    const createResponse = (statusCode, body) => ({
-        statusCode,
-        headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': process.env.REACT_APP_ALLOWED_ORIGIN || '*',
-            'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT,DELETE',
-            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-            'Access-Control-Allow-Credentials': 'true'
-        },
-        body: JSON.stringify(body)
-    });
+    // Comprehensive CORS headers
+    const createResponse = (statusCode, body) => {
+        const origin = process.env.REACT_APP_ALLOWED_ORIGIN || '*';
+        
+        console.log('Creating Response with Origin:', origin);
 
-    console.log('Full Event Details:', JSON.stringify({
+        return {
+            statusCode,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': origin,
+                'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT,DELETE',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-requested-with',
+                'Access-Control-Allow-Credentials': 'true',
+                // Add these additional headers for more comprehensive CORS support
+                'Vary': 'Origin',
+                'X-Content-Type-Options': 'nosniff'
+            },
+            body: JSON.stringify(body)
+        };
+    };
+
+    // Log all incoming events with full details
+    console.log('Full Incoming Event:', JSON.stringify({
         method: event.httpMethod,
         path: event.path,
-        headers: {
-            ...event.headers,
-            Authorization: event.headers.Authorization
-                ? event.headers.Authorization.substring(0, 20) + '...'
-                : undefined
-        },
+        headers: event.headers,
         body: event.body
     }, null, 2));
 
-    // Handle OPTIONS requests for CORS explicitly
+    // Explicit CORS handling for OPTIONS method
     if (event.httpMethod === 'OPTIONS') {
+        console.log('Handling CORS Preflight Request');
         return createResponse(204, {});
     }
 
