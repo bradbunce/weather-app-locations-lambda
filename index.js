@@ -69,11 +69,23 @@ const verifyToken = (authHeader) => {
 };
 
 exports.handler = async (event) => {
+    // Enhanced logging for ALL events
+    console.log('FULL EVENT DETAILS:', JSON.stringify({
+        method: event.httpMethod,
+        path: event.path,
+        headers: event.headers,
+        body: event.body,
+        queryStringParameters: event.queryStringParameters
+    }, null, 2));
+
     // Comprehensive CORS headers
     const createResponse = (statusCode, body) => {
         const origin = process.env.REACT_APP_ALLOWED_ORIGIN || '*';
         
-        console.log('Creating Response with Origin:', origin);
+        console.log('CORS Configuration:', {
+            allowedOrigin: origin,
+            method: event.httpMethod
+        });
 
         return {
             statusCode,
@@ -83,23 +95,13 @@ exports.handler = async (event) => {
                 'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT,DELETE',
                 'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-requested-with',
                 'Access-Control-Allow-Credentials': 'true',
-                // Add these additional headers for more comprehensive CORS support
-                'Vary': 'Origin',
-                'X-Content-Type-Options': 'nosniff'
+                'Vary': 'Origin'
             },
             body: JSON.stringify(body)
         };
     };
 
-    // Log all incoming events with full details
-    console.log('Full Incoming Event:', JSON.stringify({
-        method: event.httpMethod,
-        path: event.path,
-        headers: event.headers,
-        body: event.body
-    }, null, 2));
-
-    // Explicit CORS handling for OPTIONS method
+    // Handle OPTIONS requests explicitly
     if (event.httpMethod === 'OPTIONS') {
         console.log('Handling CORS Preflight Request');
         return createResponse(204, {});
@@ -115,7 +117,7 @@ exports.handler = async (event) => {
 
         const { path, httpMethod, body } = event;
         const requestBody = body ? JSON.parse(body) : {};
-        
+
         console.log('Processing Request:', {
             method: httpMethod,
             path: path,
@@ -130,7 +132,9 @@ exports.handler = async (event) => {
                 return createResponse(200, locations);
             
             case 'POST /locations':
+                console.log('Attempting to add location:', requestBody);
                 const newLocation = await addLocation(user.userId, requestBody);
+                console.log('Location added successfully:', newLocation);
                 return createResponse(201, newLocation);
             
             case 'DELETE /locations/{id}':
@@ -142,36 +146,35 @@ exports.handler = async (event) => {
                 await updateLocationOrder(user.userId, requestBody.locationOrder);
                 return createResponse(200, { message: 'Location order updated successfully' });
             
-            default:
-                console.log('No matching route found for:', `${httpMethod} ${path}`);
-                return createResponse(404, { message: 'Not Found' });
-        }
-    } catch (error) {
-        console.error('Detailed Error Processing:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
-
-        // Detailed error responses
-        if (error.message === 'No token provided' ||
-            error.message === 'Invalid token format' ||
-            error.name === 'JsonWebTokenError') {
-            return createResponse(401, { 
-                message: 'Unauthorized: Invalid Token',
+                default:
+                    console.log('No matching route found for:', `${httpMethod} ${path}`);
+                    return createResponse(404, { message: 'Not Found' });
+            }
+        } catch (error) {
+            console.error('DETAILED ERROR PROCESSING:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+    
+            if (error.message === 'No token provided' || 
+                error.message === 'Invalid token format' || 
+                error.name === 'JsonWebTokenError') {
+                return createResponse(401, { 
+                    message: 'Unauthorized: Invalid Token',
+                    details: error.message 
+                });
+            }
+    
+            if (error.name === 'TokenExpiredError') {
+                return createResponse(401, { 
+                    message: 'Token Expired' 
+                });
+            }
+    
+            return createResponse(500, { 
+                message: 'Internal Server Error',
                 details: error.message 
             });
         }
-
-        if (error.name === 'TokenExpiredError') {
-            return createResponse(401, { 
-                message: 'Token Expired' 
-            });
-        }
-
-        return createResponse(500, { 
-            message: 'Internal Server Error',
-            details: error.message 
-        });
-    }
-};
+    };
