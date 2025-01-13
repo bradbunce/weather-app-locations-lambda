@@ -25,7 +25,11 @@ const createResponse = (statusCode, body) => ({
 });
 
 const verifyToken = (authHeader) => {
-    console.log('Verifying token from header:', authHeader);
+    console.log('Full Authorization Header:', authHeader);
+    console.log('Environment Variables:', {
+        JWT_SECRET_EXISTS: !!process.env.JWT_SECRET,
+        JWT_SECRET_LENGTH: process.env.JWT_SECRET ? process.env.JWT_SECRET.length : 'N/A'
+    });
 
     if (!authHeader) {
         console.log('No Authorization header provided');
@@ -36,38 +40,46 @@ const verifyToken = (authHeader) => {
     const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
     if (!tokenMatch) {
         console.log('Invalid Authorization header format');
+        console.log('Attempted header:', authHeader);
         throw new Error('Invalid token format');
     }
 
     const token = tokenMatch[1];
-    console.log('Extracted token:', token.substring(0, 20) + '...');
+    console.log('Extracted token (first 20 chars):', token.substring(0, 20));
 
     if (!process.env.JWT_SECRET) {
-        console.error('JWT_SECRET environment variable not set');
-        throw new Error('Server configuration error');
+        console.error('JWT_SECRET environment variable NOT SET');
+        throw new Error('Server configuration error: Missing JWT_SECRET');
     }
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log('Token verified successfully for user:', decoded.username);
+        console.log('Token decoded successfully:', {
+            userId: decoded.userId,
+            username: decoded.username
+        });
         return decoded;
     } catch (error) {
-        console.error('Token verification failed:', error.message);
+        console.error('Token verification FAILED:', {
+            errorName: error.name,
+            errorMessage: error.message
+        });
         throw error;
     }
 };
 
 exports.handler = async (event) => {
-    console.log('Received event:', {
+    console.log('Full Event Details:', JSON.stringify({
         method: event.httpMethod,
         path: event.path,
         headers: {
             ...event.headers,
-            Authorization: event.headers.Authorization ? 
-                event.headers.Authorization.substring(0, 20) + '...' : 
-                undefined
-        }
-    });
+            Authorization: event.headers.Authorization 
+                ? event.headers.Authorization.substring(0, 20) + '...' 
+                : undefined
+        },
+        body: event.body
+    }, null, 2));
 
     // Handle OPTIONS requests for CORS
     if (event.httpMethod === 'OPTIONS') {
@@ -75,17 +87,22 @@ exports.handler = async (event) => {
     }
 
     try {
-        // Verify JWT token
+        // Verify JWT token with enhanced logging
         const user = verifyToken(event.headers.Authorization);
+        console.log('Authenticated User:', {
+            userId: user.userId,
+            username: user.username
+        });
 
         const { path, httpMethod, body } = event;
         const requestBody = body ? JSON.parse(body) : {};
 
-        console.log('Processing request:', {
+        console.log('Processing Request:', {
             method: httpMethod,
             path: path,
             userId: user.userId,
-            username: user.username
+            username: user.username,
+            requestBody
         });
 
         switch (`${httpMethod} ${path}`) {
@@ -111,22 +128,31 @@ exports.handler = async (event) => {
                 return createResponse(404, { message: 'Not Found' });
         }
     } catch (error) {
-        console.error('Request processing error:', {
+        console.error('Detailed Error Processing:', {
             name: error.name,
             message: error.message,
             stack: error.stack
         });
 
+        // Detailed error responses
         if (error.message === 'No token provided' || 
             error.message === 'Invalid token format' || 
             error.name === 'JsonWebTokenError') {
-            return createResponse(401, { message: 'Unauthorized' });
+            return createResponse(401, { 
+                message: 'Unauthorized: Invalid Token', 
+                details: error.message 
+            });
         }
 
         if (error.name === 'TokenExpiredError') {
-            return createResponse(401, { message: 'Token expired' });
+            return createResponse(401, { 
+                message: 'Token Expired' 
+            });
         }
 
-        return createResponse(500, { message: 'Internal server error' });
+        return createResponse(500, { 
+            message: 'Internal Server Error', 
+            details: error.message 
+        });
     }
 };
