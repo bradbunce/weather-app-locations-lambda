@@ -138,29 +138,29 @@ exports.handler = async (event) => {
                 return createResponse(201, newLocation);
             
                 case 'DELETE /locations/{id}':
-                    console.log('DELETE location request:', {
-                      pathParams: event.pathParameters,
-                      userId: user.userId,
-                      locationId: event.pathParameters?.id,
-                      routeKey: event.routeKey
-                    });
-                  
-                    const locationId = event.pathParameters.id;
-                    
-                    // Convert the string ID to number to match location_id type
-                    const numericLocationId = parseInt(locationId, 10);
-                    
-                    try {
-                      await removeLocation(user.userId, numericLocationId);
-                      return createResponse(200, { message: 'Location deleted successfully' });
-                    } catch (err) {
-                      console.error('Error in location deletion:', {
-                        error: err.message,
-                        userId: user.userId,
-                        locationId: numericLocationId
-                      });
-                      return createResponse(500, { message: 'Failed to delete location' });
-                    }
+  console.log('DELETE REQUEST:', {
+    pathParams: event.pathParameters,
+    userId: user.userId,
+    routeKey: event.routeKey,
+    path: event.path,
+    locationIdFromPath: event.pathParameters?.id
+  });
+
+  try {
+    await removeLocation(user.userId, event.pathParameters.id);
+    console.log('Location deleted successfully:', {
+      userId: user.userId, 
+      locationId: event.pathParameters.id
+    });
+    return createResponse(200, { message: 'Location deleted successfully' });
+  } catch (err) {
+    console.error('Delete operation failed:', {
+      error: err.message,
+      userId: user.userId,
+      locationId: event.pathParameters.id,
+    });
+    return createResponse(500, { message: 'Failed to delete location' });
+  }
             
             case 'PUT /locations/order':
                 await updateLocationOrder(user.userId, requestBody.locationOrder);
