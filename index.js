@@ -137,10 +137,30 @@ exports.handler = async (event) => {
                 console.log('Location added successfully:', newLocation);
                 return createResponse(201, newLocation);
             
-            case 'DELETE /locations/{id}':
-                const locationId = event.pathParameters.id;
-                await removeLocation(user.userId, locationId);
-                return createResponse(200, { message: 'Location deleted successfully' });
+                case 'DELETE /locations/{id}':
+                    console.log('DELETE location request:', {
+                      pathParams: event.pathParameters,
+                      userId: user.userId,
+                      locationId: event.pathParameters?.id,
+                      routeKey: event.routeKey
+                    });
+                  
+                    const locationId = event.pathParameters.id;
+                    
+                    // Convert the string ID to number to match location_id type
+                    const numericLocationId = parseInt(locationId, 10);
+                    
+                    try {
+                      await removeLocation(user.userId, numericLocationId);
+                      return createResponse(200, { message: 'Location deleted successfully' });
+                    } catch (err) {
+                      console.error('Error in location deletion:', {
+                        error: err.message,
+                        userId: user.userId,
+                        locationId: numericLocationId
+                      });
+                      return createResponse(500, { message: 'Failed to delete location' });
+                    }
             
             case 'PUT /locations/order':
                 await updateLocationOrder(user.userId, requestBody.locationOrder);
