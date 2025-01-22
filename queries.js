@@ -1,6 +1,6 @@
 const queries = {
     getUserLocations: `
-        SELECT
+        SELECT 
             l.location_id,
             l.name as city_name,
             l.country_code,
@@ -15,12 +15,12 @@ const queries = {
     `,
 
     addLocation: `
-        INSERT INTO locations
+        INSERT INTO locations 
         (name, country_code, latitude, longitude)
         VALUES (?, ?, ?, ?)
     `,
 
-    addUserFavoriteLocation: `
+    addFavorite: `
         INSERT INTO user_favorite_locations
         (user_id, location_id, display_order)
         VALUES (?, ?, ?)

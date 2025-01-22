@@ -6,13 +6,19 @@ const dbConfig = {
         host: process.env.DB_PRIMARY_HOST,
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME
+        database: process.env.DB_NAME,
+        // Add timeouts
+        connectTimeout: 3000, // 3 seconds
+        timeout: 3000 // 3 seconds for queries
     },
     replica: {
         host: process.env.DB_READ_REPLICA_HOST,
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME
+        database: process.env.DB_NAME,
+        // Add timeouts
+        connectTimeout: 3000,
+        timeout: 3000
     }
 };
 
@@ -31,22 +37,12 @@ const getUserLocationsFromDb = async (userId) => {
     }
 };
 
-const getMaxDisplayOrderForUserFromDb = async (userId) => {
-    const connection = await createConnection('read');
-    try {
-        const [rows] = await connection.execute(queries.getMaxDisplayOrder, [userId]);
-        return rows[0].max_order;
-    } finally {
-        await connection.end();
-    }
-};
-
 const addLocationToDb = async (userId, locationData) => {
     const connection = await createConnection('write');
     try {
         await connection.beginTransaction();
 
-        // Check if location exists first
+        // First check if location exists
         const [existingLocations] = await connection.execute(
             'SELECT location_id FROM locations WHERE name = ? AND country_code = ?',
             [locationData.city_name, locationData.country_code]
@@ -55,11 +51,11 @@ const addLocationToDb = async (userId, locationData) => {
         let locationId;
         if (existingLocations.length > 0) {
             locationId = existingLocations[0].location_id;
-            console.log('Using existing location:', { locationId });
+            console.log('Found existing location:', { locationId });
         } else {
             // Insert new location
             const [result] = await connection.execute(
-                'INSERT INTO locations (name, country_code, latitude, longitude) VALUES (?, ?, ?, ?)',
+                queries.addLocation,
                 [
                     locationData.city_name,
                     locationData.country_code,
@@ -71,32 +67,29 @@ const addLocationToDb = async (userId, locationData) => {
             console.log('Created new location:', { locationId });
         }
 
-        // Get max display order in the same connection
+        // Get current max display order
         const [orderRows] = await connection.execute(
             'SELECT COALESCE(MAX(display_order), -1) as max_order FROM user_favorite_locations WHERE user_id = ?',
             [userId]
         );
         const nextOrder = orderRows[0].max_order + 1;
 
-        // Add to user_favorite_locations
+        // Add to favorites
         await connection.execute(
-            'INSERT INTO user_favorite_locations (user_id, location_id, display_order) VALUES (?, ?, ?)',
+            queries.addFavorite,
             [userId, locationId, nextOrder]
         );
 
         await connection.commit();
-        console.log('Successfully added location:', { 
-            userId, 
-            locationId, 
-            displayOrder: nextOrder 
+        console.log('Successfully added to favorites:', {
+            userId,
+            locationId,
+            displayOrder: nextOrder
         });
+        
         return locationId;
     } catch (error) {
-        console.error('Error adding location:', {
-            error: error.message,
-            userId,
-            locationData
-        });
+        console.error('Error in addLocationToDb:', error);
         await connection.rollback();
         throw error;
     } finally {
@@ -108,17 +101,14 @@ const removeLocationFromDb = async (userId, locationId) => {
     const connection = await createConnection('write');
     try {
         await connection.beginTransaction();
-
-        // Remove from user_favorite_locations
         await connection.execute(queries.removeLocation, [userId, locationId]);
-
-        // Fetch remaining locations to re-order
+        
+        // Reorder remaining locations
         const [remainingLocations] = await connection.execute(
             'SELECT location_id FROM user_favorite_locations WHERE user_id = ? ORDER BY display_order ASC',
             [userId]
         );
 
-        // Re-assign display orders
         for (let i = 0; i < remainingLocations.length; i++) {
             await connection.execute(
                 queries.updateLocationOrder,
@@ -161,6 +151,5 @@ module.exports = {
     getUserLocationsFromDb,
     addLocationToDb,
     removeLocationFromDb,
-    updateLocationOrderInDb,
-    getMaxDisplayOrderForUserFromDb
+    updateLocationOrderInDb
 };
