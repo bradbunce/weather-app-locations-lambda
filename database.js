@@ -46,45 +46,57 @@ const addLocationToDb = async (userId, locationData) => {
     try {
         await connection.beginTransaction();
 
-        // First, insert or get location from locations table
-        let locationId;
+        // Check if location exists first
         const [existingLocations] = await connection.execute(
             'SELECT location_id FROM locations WHERE name = ? AND country_code = ?',
-            [locationData.city_name || locationData.cityName, 
-             locationData.country_code || locationData.countryCode]
+            [locationData.city_name, locationData.country_code]
         );
 
+        let locationId;
         if (existingLocations.length > 0) {
             locationId = existingLocations[0].location_id;
+            console.log('Using existing location:', { locationId });
         } else {
             // Insert new location
             const [result] = await connection.execute(
-                queries.addLocation,
+                'INSERT INTO locations (name, country_code, latitude, longitude) VALUES (?, ?, ?, ?)',
                 [
-                    locationData.city_name || locationData.cityName,
-                    locationData.country || '', // Default empty string if not provided
-                    locationData.country_code || locationData.countryCode,
+                    locationData.city_name,
+                    locationData.country_code,
                     locationData.latitude,
                     locationData.longitude
                 ]
             );
             locationId = result.insertId;
+            console.log('Created new location:', { locationId });
         }
 
-        // Get next display order
-        const displayOrder = locationData.display_order !== undefined
-            ? locationData.display_order
-            : await getMaxDisplayOrderForUserFromDb(userId) + 1;
+        // Get max display order in the same connection
+        const [orderRows] = await connection.execute(
+            'SELECT COALESCE(MAX(display_order), -1) as max_order FROM user_favorite_locations WHERE user_id = ?',
+            [userId]
+        );
+        const nextOrder = orderRows[0].max_order + 1;
 
         // Add to user_favorite_locations
         await connection.execute(
-            queries.addUserFavoriteLocation,
-            [userId, locationId, displayOrder]
+            'INSERT INTO user_favorite_locations (user_id, location_id, display_order) VALUES (?, ?, ?)',
+            [userId, locationId, nextOrder]
         );
 
         await connection.commit();
+        console.log('Successfully added location:', { 
+            userId, 
+            locationId, 
+            displayOrder: nextOrder 
+        });
         return locationId;
     } catch (error) {
+        console.error('Error adding location:', {
+            error: error.message,
+            userId,
+            locationData
+        });
         await connection.rollback();
         throw error;
     } finally {
