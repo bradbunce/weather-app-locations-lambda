@@ -1,43 +1,54 @@
 const queries = {
     getUserLocations: `
-        SELECT 
-            location_id,
-            city_name,
-            country_code,
-            latitude,
-            longitude,
-            display_order,
-            created_at
-        FROM user_locations 
-        WHERE user_id = ?
-        ORDER BY display_order ASC, created_at ASC
+        SELECT
+            l.location_id,
+            l.name as city_name,
+            l.country_code,
+            l.latitude,
+            l.longitude,
+            ufl.display_order,
+            ufl.created_at
+        FROM locations l
+        JOIN user_favorite_locations ufl ON l.location_id = ufl.location_id
+        WHERE ufl.user_id = ?
+        ORDER BY ufl.display_order ASC, ufl.created_at ASC
     `,
 
     addLocation: `
-        INSERT INTO user_locations (
-            user_id,
-            city_name,
-            country_code,
-            latitude,
-            longitude,
-            display_order
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO locations
+        (name, country_code, latitude, longitude)
+        VALUES (?, ?, ?, ?)
+    `,
+
+    addUserFavoriteLocation: `
+        INSERT INTO user_favorite_locations
+        (user_id, location_id, display_order)
+        VALUES (?, ?, ?)
     `,
 
     removeLocation: `
-        DELETE FROM user_locations 
+        DELETE FROM user_favorite_locations
         WHERE user_id = ? AND location_id = ?
     `,
 
     updateLocationOrder: `
-        UPDATE user_locations 
+        UPDATE user_favorite_locations
         SET display_order = ?
         WHERE user_id = ? AND location_id = ?
     `,
 
     getLocationById: `
-        SELECT * FROM user_locations
-        WHERE location_id = ? AND user_id = ?
+        SELECT 
+            l.location_id,
+            l.name as city_name,
+            l.country_code,
+            l.latitude,
+            l.longitude,
+            ufl.display_order,
+            ufl.created_at
+        FROM locations l
+        JOIN user_favorite_locations ufl ON l.location_id = ufl.location_id
+        WHERE l.location_id = ? AND ufl.user_id = ?
     `
 };
 
