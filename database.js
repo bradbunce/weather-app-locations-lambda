@@ -1,5 +1,7 @@
 const mysql = require('mysql2/promise');
 const { queries } = require('./queries');
+const AWS = require('aws-sdk');
+const lambda = new AWS.Lambda();
 
 const dbConfig = {
     primary: {
@@ -42,13 +44,15 @@ const addLocationToDb = async (userId, locationData) => {
     try {
         await connection.beginTransaction();
 
-        // First check if location exists
+        // Check if location exists
         const [existingLocations] = await connection.execute(
             'SELECT location_id FROM locations WHERE name = ? AND country_code = ?',
             [locationData.city_name, locationData.country_code]
         );
 
         let locationId;
+        let isNewLocation = false;
+        
         if (existingLocations.length > 0) {
             locationId = existingLocations[0].location_id;
             console.log('Found existing location:', { locationId });
@@ -64,6 +68,7 @@ const addLocationToDb = async (userId, locationData) => {
                 ]
             );
             locationId = result.insertId;
+            isNewLocation = true;
             console.log('Created new location:', { locationId });
         }
 
@@ -81,11 +86,27 @@ const addLocationToDb = async (userId, locationData) => {
         );
 
         await connection.commit();
-        console.log('Successfully added to favorites:', {
-            userId,
-            locationId,
-            displayOrder: nextOrder
-        });
+
+        // If this is a new location, trigger the fetch Lambda
+        if (isNewLocation) {
+            try {
+                await lambda.invoke({
+                    FunctionName: process.env.WEATHER_APP_FETCH_LAMBDA,
+                    InvocationType: 'Event', // Async invocation
+                    Payload: JSON.stringify({
+                        locationId,
+                        city: locationData.city_name,
+                        country: locationData.country_code,
+                        latitude: locationData.latitude,
+                        longitude: locationData.longitude
+                    })
+                }).promise();
+                console.log('Triggered weather fetch for new location:', locationId);
+            } catch (error) {
+                console.error('Failed to trigger weather fetch:', error);
+                // Don't throw - we still want to return the locationId even if fetch fails
+            }
+        }
         
         return locationId;
     } catch (error) {
