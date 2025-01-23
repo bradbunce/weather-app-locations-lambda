@@ -98,37 +98,46 @@ const addLocationToDb = async (userId, locationData) => {
 };
 
 const removeLocationFromDb = async (userId, locationId) => {
-    const connection = await getConnection();
-    
+    const connection = await createConnection('write');
     try {
-      await connection.beginTransaction();
-  
-      // Remove from user_favorite_locations
-      await connection.execute(
-        'DELETE FROM user_favorite_locations WHERE user_id = ? AND location_id = ?',
-        [userId, locationId]
-      );
-  
-      // Check if location is still referenced
-      const [rows] = await connection.execute(
-        'SELECT COUNT(*) as count FROM user_favorite_locations WHERE location_id = ?',
-        [locationId]
-      );
-  
-      if (rows[0].count === 0) {
-        // Delete all related weather data
-        await connection.execute('DELETE FROM hourly_forecasts WHERE location_id = ?', [locationId]);
-        await connection.execute('DELETE FROM weather_forecasts WHERE location_id = ?', [locationId]);
-        await connection.execute('DELETE FROM weather_cache WHERE location_id = ?', [locationId]);
-        await connection.execute('DELETE FROM locations WHERE location_id = ?', [locationId]);
-      }
-  
-      await connection.commit();
+        await connection.beginTransaction();
+        
+        // Remove from user_favorite_locations
+        await connection.execute(queries.removeLocation, [userId, locationId]);
+        
+        // Check if location is still referenced by any user
+        const [rows] = await connection.execute(
+            'SELECT COUNT(*) as count FROM user_favorite_locations WHERE location_id = ?',
+            [locationId]
+        );
+
+        if (rows[0].count === 0) {
+            // Delete all related weather data
+            await connection.execute('DELETE FROM hourly_forecasts WHERE location_id = ?', [locationId]);
+            await connection.execute('DELETE FROM weather_forecasts WHERE location_id = ?', [locationId]);
+            await connection.execute('DELETE FROM weather_cache WHERE location_id = ?', [locationId]);
+            await connection.execute('DELETE FROM locations WHERE location_id = ?', [locationId]);
+        }
+        
+        // Reorder remaining locations
+        const [remainingLocations] = await connection.execute(
+            'SELECT location_id FROM user_favorite_locations WHERE user_id = ? ORDER BY display_order ASC',
+            [userId]
+        );
+
+        for (let i = 0; i < remainingLocations.length; i++) {
+            await connection.execute(
+                queries.updateLocationOrder,
+                [i, userId, remainingLocations[i].location_id]
+            );
+        }
+
+        await connection.commit();
     } catch (error) {
-      await connection.rollback();
-      throw error;
+        await connection.rollback();
+        throw error;
     } finally {
-      await connection.release();
+        await connection.end();
     }
   };
 
