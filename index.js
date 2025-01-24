@@ -213,8 +213,8 @@ exports.handler = async (event) => {
         await removeLocation(user.userId, locationId);
         const updatedLocations = await getUserLocations(user.userId);
         await broadcastToUserConnections(user.userId, {
-          action: 'locationUpdate',
-          locations: updatedLocations
+          type: 'weatherUpdate',  // Changed from 'action'
+          data: updatedLocations  // Changed from 'locations'
         });
         return createResponse(200, { message: "Location deleted successfully" });
       } catch (err) {
