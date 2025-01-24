@@ -66,7 +66,7 @@ const broadcastLocationUpdate = async (userId, locations) => {
   }
 };
 
-const broadcastToUserConnections = async (userId, data) => {
+const broadcastToUserConnections = async (userId, locations) => {
   try {
     const { Items } = await dynamo.send(new ScanCommand({
       TableName: CONFIG.CONNECTIONS_TABLE,
@@ -78,9 +78,14 @@ const broadcastToUserConnections = async (userId, data) => {
 
     if (!Items?.length) return;
 
+    const processedData = await processWeatherData(locations);
+    
     await Promise.all(Items.map(connection => 
       apiGateway.send(new PostToConnectionCommand({
-        Data: JSON.stringify(data),
+        Data: JSON.stringify({
+          type: 'weatherUpdate',
+          data: processedData
+        }),
         ConnectionId: connection.connectionId
       }))
     ));
