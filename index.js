@@ -78,13 +78,11 @@ const broadcastToUserConnections = async (userId, locations) => {
 
     if (!Items?.length) return;
 
-    const processedData = await processWeatherData(locations);
-    
     await Promise.all(Items.map(connection => 
       apiGateway.send(new PostToConnectionCommand({
         Data: JSON.stringify({
-          type: 'weatherUpdate',
-          data: processedData
+          type: 'locationUpdate',  // Changed from 'action'
+          data: locations         // Changed from 'locations'
         }),
         ConnectionId: connection.connectionId
       }))
@@ -217,10 +215,7 @@ exports.handler = async (event) => {
       try {
         await removeLocation(user.userId, locationId);
         const updatedLocations = await getUserLocations(user.userId);
-        await broadcastToUserConnections(user.userId, {
-          type: 'weatherUpdate',  // Changed from 'action'
-          data: updatedLocations  // Changed from 'locations'
-        });
+        await broadcastToUserConnections(user.userId, updatedLocations);
         return createResponse(200, { message: "Location deleted successfully" });
       } catch (err) {
         console.error("Delete operation failed:", {
