@@ -66,6 +66,29 @@ const broadcastLocationUpdate = async (userId, locations) => {
   }
 };
 
+const broadcastToUserConnections = async (userId, data) => {
+  try {
+    const { Items } = await dynamo.send(new ScanCommand({
+      TableName: CONFIG.CONNECTIONS_TABLE,
+      FilterExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': String(userId)
+      }
+    }));
+
+    if (!Items?.length) return;
+
+    await Promise.all(Items.map(connection => 
+      apiGateway.send(new PostToConnectionCommand({
+        Data: JSON.stringify(data),
+        ConnectionId: connection.connectionId
+      }))
+    ));
+  } catch (error) {
+    console.error('Broadcast error:', error);
+  }
+};
+
 // Create response with CORS headers
 const createResponse = (statusCode, body) => {
   const origin = process.env.REACT_APP_ALLOWED_ORIGIN || "*";
@@ -189,7 +212,10 @@ exports.handler = async (event) => {
       try {
         await removeLocation(user.userId, locationId);
         const updatedLocations = await getUserLocations(user.userId);
-        await broadcastLocationUpdate(user.userId, updatedLocations);
+        await broadcastToUserConnections(user.userId, {
+          action: 'locationUpdate',
+          locations: updatedLocations
+        });
         return createResponse(200, { message: "Location deleted successfully" });
       } catch (err) {
         console.error("Delete operation failed:", {
