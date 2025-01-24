@@ -3,7 +3,10 @@ if (process.env.NODE_ENV === "development") {
   require("dotenv").config();
 }
 
-const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const {
+  ApiGatewayManagementApiClient,
+  PostToConnectionCommand,
+} = require("@aws-sdk/client-apigatewaymanagementapi");
 const jwt = require("jsonwebtoken");
 const {
   addLocation,
@@ -14,81 +17,94 @@ const {
 
 // Initialize API Gateway client for WebSocket
 const apiGateway = new ApiGatewayManagementApiClient({
-  endpoint: process.env.WEBSOCKET_API_ENDPOINT
+  endpoint: process.env.WEBSOCKET_API_ENDPOINT,
 });
 
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+const {
+  DynamoDBDocumentClient,
+  ScanCommand,
+} = require("@aws-sdk/lib-dynamodb");
 
 const client = new DynamoDBClient();
 const dynamo = DynamoDBDocumentClient.from(client);
 
 const CONFIG = {
-  CONNECTIONS_TABLE: 'brad-weather-app-websocket-connections'
+  CONNECTIONS_TABLE: "brad-weather-app-websocket-connections",
 };
 
 const broadcastLocationUpdate = async (userId, locations) => {
   try {
-    console.log('Broadcasting location update:', {
+    console.log("Broadcasting location update:", {
       userId,
-      locationCount: locations.length
+      locationCount: locations.length,
     });
 
     // Get all connections for this user
-    const { Items } = await dynamo.send(new ScanCommand({
-      TableName: CONFIG.CONNECTIONS_TABLE,
-      FilterExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': String(userId)
-      }
-    }));
+    const { Items } = await dynamo.send(
+      new ScanCommand({
+        TableName: CONFIG.CONNECTIONS_TABLE,
+        FilterExpression: "userId = :userId",
+        ExpressionAttributeValues: {
+          ":userId": String(userId),
+        },
+      })
+    );
 
     if (!Items?.length) {
-      console.log('No active connections for user:', userId);
+      console.log("No active connections for user:", userId);
       return;
     }
 
     // Send update to each connection
-    const sendPromises = Items.map(connection => 
-      apiGateway.send(new PostToConnectionCommand({
-        Data: JSON.stringify({
-          action: 'locationUpdate',
-          locations
-        }),
-        ConnectionId: connection.connectionId
-      }))
+    const sendPromises = Items.map((connection) =>
+      apiGateway.send(
+        new PostToConnectionCommand({
+          Data: JSON.stringify({
+            action: "locationUpdate",
+            locations,
+          }),
+          ConnectionId: connection.connectionId,
+        })
+      )
     );
 
     await Promise.all(sendPromises);
-    console.log('Location update broadcast successful');
+    console.log("Location update broadcast successful");
   } catch (error) {
-    console.error('Failed to broadcast location update:', error);
+    console.error("Failed to broadcast location update:", error);
   }
 };
 
 const broadcastToUserConnections = async (userId, locations) => {
   try {
-    const { Items } = await dynamo.send(new ScanCommand({
-      TableName: CONFIG.CONNECTIONS_TABLE,
-      FilterExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': String(userId)
-      }
-    }));
+    const { Items } = await dynamo.send(
+      new ScanCommand({
+        TableName: CONFIG.CONNECTIONS_TABLE,
+        FilterExpression: "userId = :userId",
+        ExpressionAttributeValues: {
+          ":userId": String(userId),
+        },
+      })
+    );
 
     if (!Items?.length) return;
 
-    await Promise.all(Items.map(connection => 
-      apiGateway.send(new PostToConnectionCommand({
-        Data: JSON.stringify({
-          type: 'locationUpdate',  // Changed from 'action'
-          data: locations         // Changed from 'locations'
-        }),
-        ConnectionId: connection.connectionId
-      }))
-    ));
+    await Promise.all(
+      Items.map((connection) =>
+        apiGateway.send(
+          new PostToConnectionCommand({
+            Data: JSON.stringify({
+              type: "locationUpdate", // Changed from 'action'
+              data: locations, // Changed from 'locations'
+            }),
+            ConnectionId: connection.connectionId,
+          })
+        )
+      )
+    );
   } catch (error) {
-    console.error('Broadcast error:', error);
+    console.error("Broadcast error:", error);
   }
 };
 
@@ -97,7 +113,7 @@ const createResponse = (statusCode, body) => {
   const origin = process.env.REACT_APP_ALLOWED_ORIGIN || "*";
 
   console.log("CORS Configuration:", {
-    allowedOrigin: origin
+    allowedOrigin: origin,
   });
 
   return {
@@ -204,24 +220,26 @@ exports.handler = async (event) => {
     });
 
     // Check if this is a delete request for a specific location
-    if (httpMethod === 'DELETE' && path.match(/^\/locations\/\d+$/)) {
-      const locationId = path.split('/').pop();
+    if (httpMethod === "DELETE" && path.match(/^\/locations\/\d+$/)) {
+      const locationId = path.split("/").pop();
       console.log("Processing delete request:", {
         path,
         locationId,
-        userId: user.userId
+        userId: user.userId,
       });
-      
+
       try {
         await removeLocation(user.userId, locationId);
         const updatedLocations = await getUserLocations(user.userId);
         await broadcastToUserConnections(user.userId, updatedLocations);
-        return createResponse(200, { message: "Location deleted successfully" });
+        return createResponse(200, {
+          message: "Location deleted successfully",
+        });
       } catch (err) {
         console.error("Delete operation failed:", {
           error: err.message,
           userId: user.userId,
-          locationId
+          locationId,
         });
         return createResponse(500, { message: "Failed to delete location" });
       }
@@ -238,7 +256,7 @@ exports.handler = async (event) => {
         const newLocation = await addLocation(user.userId, requestBody);
         console.log("Location added successfully:", newLocation);
         const updatedLocations = await getUserLocations(user.userId);
-        await broadcastLocationUpdate(user.userId, updatedLocations);
+        await broadcastToUserConnections(user.userId, updatedLocations);
         return createResponse(201, newLocation);
 
       case "PUT /locations/order":
