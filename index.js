@@ -17,6 +17,16 @@ const apiGateway = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_API_ENDPOINT
 });
 
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+
+const client = new DynamoDBClient();
+const dynamo = DynamoDBDocumentClient.from(client);
+
+const CONFIG = {
+  CONNECTIONS_TABLE: 'brad-weather-app-websocket-connections'
+};
+
 const broadcastLocationUpdate = async (userId, locations) => {
   try {
     console.log('Broadcasting location update:', {
