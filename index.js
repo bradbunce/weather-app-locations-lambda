@@ -24,20 +24,35 @@ const broadcastLocationUpdate = async (userId, locations) => {
       locationCount: locations.length
     });
 
-    await apiGateway.send(new PostToConnectionCommand({
-      Data: JSON.stringify({
-        action: 'locationUpdate',
-        locations
-      }),
-      ConnectionId: userId
+    // Get all connections for this user
+    const { Items } = await dynamo.send(new ScanCommand({
+      TableName: CONFIG.CONNECTIONS_TABLE,
+      FilterExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': String(userId)
+      }
     }));
-    
+
+    if (!Items?.length) {
+      console.log('No active connections for user:', userId);
+      return;
+    }
+
+    // Send update to each connection
+    const sendPromises = Items.map(connection => 
+      apiGateway.send(new PostToConnectionCommand({
+        Data: JSON.stringify({
+          action: 'locationUpdate',
+          locations
+        }),
+        ConnectionId: connection.connectionId
+      }))
+    );
+
+    await Promise.all(sendPromises);
     console.log('Location update broadcast successful');
   } catch (error) {
-    console.error('Failed to broadcast location update:', {
-      error: error.message,
-      userId
-    });
+    console.error('Failed to broadcast location update:', error);
   }
 };
 
