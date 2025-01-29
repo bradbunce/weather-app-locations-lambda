@@ -116,25 +116,17 @@ const createResponse = (statusCode, body) => {
     allowedOrigin: origin,
   });
 
-  const headers = {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
-    "Access-Control-Allow-Headers":
-      "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-requested-with",
-    "Access-Control-Allow-Credentials": "true",
-    Vary: "Origin",
-  };
-
-  // For redirects, add Location header and don't include Content-Type
-  if (statusCode === 302 && body.location) {
-    headers["Location"] = body.location;
-  } else {
-    headers["Content-Type"] = "application/json";
-  }
-
   return {
     statusCode,
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
+      "Access-Control-Allow-Headers":
+        "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-requested-with",
+      "Access-Control-Allow-Credentials": "true",
+      Vary: "Origin",
+    },
     body: JSON.stringify(body),
   };
 };
@@ -215,11 +207,6 @@ exports.handler = async (event) => {
       userId: user.userId,
       username: user.username,
     });
-
-    // Check load testing tools feature flag
-    if (event.headers['x-load-testing-tools-enabled'] === 'false') {
-      return createResponse(302, { location: '/' });
-    }
 
     const { path, httpMethod, body } = event;
     const requestBody = body ? JSON.parse(body) : {};
